@@ -1,0 +1,12 @@
+{
+  "hotKeyCode": 8,
+  "hotKeyModifiers": 4096,
+  "triggerPrefix": "!!!",
+  "localClipboardOnly": true,
+  "maxInputBytes": 32768,
+  "maxOutputTokens": 4096,
+  "model": "deepseek-flash",
+  "systemPrompt": "直接回答用户的问题，使用与问题相同的语言。只输出可直接粘贴使用的答案，不添加开场白或答案标签。保留必要的换行和代码格式。",
+  "timeoutSeconds": 60,
+  "apiEndpoint": "https://api.deepseek.com/chat/completions"
+}

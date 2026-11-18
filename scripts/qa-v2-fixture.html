@@ -1,0 +1,33 @@
+<!doctype html><html lang="zh"><meta charset="utf-8"><title>SilentClipboard Native QA</title>
+<style>body{font:20px system-ui;padding:40px}textarea{display:block;width:90%;height:120px;font:20px system-ui;margin:20px 0}</style>
+<h1>SilentClipboard 测试专用页面</h1>
+<textarea id="source" autofocus>$c 只输出：春夏秋冬天地人。不加标点或其他文字。</textarea>
+<textarea id="other">PAGE_SELECTION_MUST_NOT_BE_SENT</textarea>
+<textarea id="output"></textarea>
+<div style="height:1200px">滚动测试</div>
+<script>
+const events={copy:0,cut:0,paste:0,blur:0,focus:0,input:0,keydown:0,compositionstart:0,compositionupdate:0,compositionend:0};
+let composing=false;
+addEventListener('compositionstart',()=>composing=true,true);
+addEventListener('compositionend',()=>composing=false,true);
+for(const type of Object.keys(events))addEventListener(type,()=>events[type]++,true);
+const source=document.querySelector('#source'),other=document.querySelector('#other'),output=document.querySelector('#output');
+source.focus();source.select();
+let phase='source',sequence=0;
+addEventListener('copy',()=>{if(phase==='source')setTimeout(()=>{phase='other';other.focus();other.setSelectionRange(5,22);window.scrollTo(0,40)},100)});
+setInterval(async()=>{
+ const command=await fetch('/command').then(x=>x.json());
+ if(command.sequence!==sequence){sequence=command.sequence;
+  if(command.action==='output'){phase='output';output.focus();output.select()}
+  if(command.action==='source'){phase='source';source.focus();source.select()}
+  if(command.action==='ime'){phase='ime';other.value='';other.focus()}
+ }
+ const active=document.activeElement;
+ await fetch('/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+  phase,active:active.id,start:active.selectionStart,end:active.selectionEnd,scrollX,scrollY,hasFocus:document.hasFocus(),composing,
+  compositionValue:phase==='ime'?other.value:undefined,
+  sourceUnchanged:source.value==='$c 只输出：春夏秋冬天地人。不加标点或其他文字。',otherUnchanged:other.value==='PAGE_SELECTION_MUST_NOT_BE_SENT',
+  outputValue:output.value,outputMatches:output.value==='春夏秋冬天地人..',events:{...events}
+ })});
+},100);
+</script></html>

@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+CONFIGURATION="${1:-release}"
+swift build -c "$CONFIGURATION"
+APP="build/SilentClipboard.app"
+mkdir -p "$APP/Contents/MacOS"
+cp ".build/$CONFIGURATION/SilentClipboard" "$APP/Contents/MacOS/SilentClipboard"
+cp packaging/Info.plist "$APP/Contents/Info.plist"
+codesign --force --sign "${SRF_SIGN_IDENTITY:--}" --identifier com.bear.silentclipboard "$APP"
+codesign --verify --strict "$APP"
+printf 'Built %s\n' "$APP"
+
+SETTINGS="build/SilentClipboard Settings.app"
+mkdir -p "$SETTINGS/Contents/MacOS"
+cp ".build/$CONFIGURATION/SilentClipboard" "$SETTINGS/Contents/MacOS/SilentClipboard"
+cp packaging/Settings-Info.plist "$SETTINGS/Contents/Info.plist"
+codesign --force --sign "${SRF_SIGN_IDENTITY:--}" --identifier com.bear.silentclipboard.settings "$SETTINGS"
+codesign --verify --strict "$SETTINGS"
+printf 'Built %s\n' "$SETTINGS"
