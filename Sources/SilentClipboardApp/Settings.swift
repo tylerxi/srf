@@ -13,6 +13,7 @@ import ClipboardCore
     @Published var outputAllowed = false
     @Published var shortcutsReady = false
     @Published var success = false
+    @Published var textReplacement = TextReplacementStatus()
 
     private func call(_ request: ControlRequest) async throws -> ControlResponse {
         try await Task.detached(priority: .userInitiated) { try SocketIO.client(request) }.value
@@ -54,6 +55,25 @@ import ClipboardCore
         clipboardAllowed = result.clipboardAccess == "allowed"
         outputAllowed = result.outputAccess == true
         shortcutsReady = result.hotkeyRegistered == true && result.outputHotkeyRegistered == true
+        if let state = result.textReplacement { textReplacement = state }
+    }
+    var textReplacementSummary: String {
+        guard configuration.textReplacementEnabled else {
+            return "已关闭。保存后会删除本工具管理的 ffa–ffz 词条，其他系统词条不受影响。"
+        }
+        switch textReplacement.access {
+        case "allowed":
+            if let error = textReplacement.lastError { return "已授权，但上次写入失败：\(error)" }
+            if textReplacement.managedShortcuts.isEmpty { return "已就绪；收到答案后会写入 ffa、ffb… 词条。" }
+            return "已写入 \(textReplacement.managedShortcuts.joined(separator: "、"))；输入词条时请切到 ABC/英文输入。"
+        case "permission_required":
+            return "需要“完全磁盘访问权限”。首次使用请在系统设置中为后台应用勾选；之后不会再弹窗。"
+        case "database_missing":
+            return "未找到系统文本替换数据库；请先在系统设置中添加一条文本替换，或检查当前用户。"
+        default:
+            if let error = textReplacement.lastError { return "词条状态未知：\(error)" }
+            return "正在检查系统文本替换权限…"
+        }
     }
     func save() async {
         busy = true; defer { busy = false }
@@ -110,6 +130,28 @@ import ClipboardCore
         if let state = try? await call(ControlRequest(command: "status")) { update(state) }
         success = false; message = "剪贴板权限检查完成。"
     }
+    func refreshTextReplacements() async {
+        busy = true; defer { busy = false }
+        _ = try? await call(ControlRequest(command: "text-replacement-refresh"))
+        try? await Task.sleep(for: .milliseconds(400))
+        if let state = try? await call(ControlRequest(command: "status")) { update(state) }
+        success = textReplacement.access == "allowed"
+        message = textReplacementSummary
+    }
+    func clearTextReplacements() async {
+        busy = true; defer { busy = false }
+        _ = try? await call(ControlRequest(command: "text-replacement-clear"))
+        try? await Task.sleep(for: .milliseconds(400))
+        if let state = try? await call(ControlRequest(command: "status")) { update(state) }
+        success = false
+        message = "已清除本工具管理的词条；其他系统词条保留。"
+    }
+    func openFullDiskAccess() {
+        // Only a deliberately clicked setup button may open this pane. The app
+        // cannot request Full Disk Access itself.
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+        message = "请在“完全磁盘访问权限”中添加并勾选 /Applications/SilentClipboard.app，然后回到这里点击“刷新词条状态”。"
+    }
     func refresh() async {
         busy = true; defer { busy = false }
         do {
@@ -129,6 +171,9 @@ import ClipboardCore
         case "hotkey_conflict": "发送快捷键被其他应用占用，请先解除冲突。"
         case "unexpected_answer": "已收到回复，但测试文字不匹配，请检查模型接口。"
         case "invalid_configuration", "invalid_configuration_or_write_failed": "配置无效或无法写入，请检查地址、模型和提示词。"
+        case "text_replacement_permission_required": "系统词条需要“完全磁盘访问权限”，请在系统设置中授权后台应用。"
+        case "text_replacement_shortcut_conflict": "ffa–ffz 中存在不属于本工具的词条，为避免覆盖已停止写入。请先处理冲突词条。"
+        case "text_replacement_database_missing": "未找到系统文本替换数据库，请先打开“键盘 › 文本替换”添加一条。"
         case "verification_running": "已有连接测试正在进行，请稍后再试。"
         case "timeout", "network_error": "连接超时或网络不可用，请检查 API 地址和网络。"
         default: "测试未成功（\(code)），请检查接口是否兼容 Chat Completions。"
@@ -178,6 +223,23 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }.padding(12)
             } label: { Text("默认提示词").font(.headline) }
+            GroupBox {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("把答案写入系统文本替换词条（ffa、ffb…）", isOn: $model.configuration.textReplacementEnabled)
+                    Text("每 4 个字符一条，最多 26 条。只会在成功收到答案后静默更新，不修改剪贴板。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(model.textReplacementSummary)
+                        .font(.caption).fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(model.textReplacement.access == "allowed" ? Color.secondary : Color.orange)
+                    HStack(spacing: 10) {
+                        Button("刷新词条状态") { Task { await model.refreshTextReplacements() } }.disabled(model.busy)
+                        Button("清除本工具词条") { Task { await model.clearTextReplacements() } }.disabled(model.busy)
+                        Button("打开完全磁盘访问设置") { model.openFullDiskAccess() }
+                    }.controlSize(.small)
+                    Text("输入 ffa 时请切到 ABC/英文输入模式；中文输入法的拼音组合阶段不会触发系统文本替换。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.padding(12)
+            } label: { Text("系统词条").font(.headline) }
             HStack(alignment: .center, spacing: 14) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("⌘C 复制以关键字开头的文字 → ⌃C 发送 → ⌃V 逐次输出")

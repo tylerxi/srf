@@ -30,6 +30,7 @@ import ClipboardCore
             srf settings                Open the separate settings application
             srf configure FILE          Load nonsecret JSON configuration
             srf verify | verify-status  Fixed API smoke test; does not read/write clipboard
+            srf text-replacement-status | text-replacement-refresh | text-replacement-clear
             srf login-enable | login-disable
             """)
             return

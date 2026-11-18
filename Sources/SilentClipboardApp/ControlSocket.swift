@@ -24,6 +24,7 @@ struct ControlResponse: Codable, Sendable {
     var activationPolicy: String?
     var loginStatus: String?
     var pid: Int32?
+    var textReplacement: TextReplacementStatus?
 }
 
 enum SocketIO {

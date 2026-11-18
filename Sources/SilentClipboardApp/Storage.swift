@@ -9,6 +9,9 @@ enum AppPaths {
         .appendingPathComponent("Library/Application Support/SilentClipboard", isDirectory: true)
     static let socket = directory.appendingPathComponent("control.sock").path
     static let config = directory.appendingPathComponent("config.json")
+    static let textReplacementsDatabase = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/KeyboardServices/TextReplacements.db")
+    static let textReplacementManifest = directory.appendingPathComponent("text-replacements.json")
     static func prepare() throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])

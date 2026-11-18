@@ -1,8 +1,8 @@
 # SilentClipboard（静默剪贴板）· 项目说明
 
-> 原生 macOS 静默问答工具。剪贴板里以触发关键字开头的纯文本，经 ⌃C 发送到兼容 Chat Completions 的大模型 API，回答保存在内存里，再由 ⌃V 逐段输出到当前前台应用。全程无窗口、无浮层、无通知、不改写系统剪贴板、不读取选区或屏幕。
+> 原生 macOS 静默问答工具。剪贴板里以触发关键字开头的纯文本，经 ⌃C 发送到兼容 Chat Completions 的大模型 API，回答保存在内存里，再由 ⌃V 逐段输出到当前前台应用；成功回答还会默认写入系统文本替换 `ffa`–`ffz`。全程无窗口、无浮层、无通知、不改写系统剪贴板、不读取选区或屏幕。
 
-当前版本：**0.2.0**（`Info.plist` CFBundleShortVersionString = 0.2.0，build 2）
+当前版本：**0.3.0**（`Info.plist` CFBundleShortVersionString = 0.3.0，build 3）
 
 ---
 
@@ -13,11 +13,12 @@
 1. 在原应用用 ⌘C 复制一段以 `!!!` 开头的文字（例如 `!!! 用一句话解释什么是索引`）。
 2. 按 **⌃C（Control+C）** 发送。触发关键字会被剥离，剩余文本作为问题发给 API。
 3. 回答就绪后，在目标输入位置反复按 **⌃V（Control+V）**，每次输出 2 个 Swift `Character`（中文、组合字符、emoji 不会被 UTF-8 字节切断），用尽后持续输出 `..`。
+4. 同一回答按 4 个 `Character` 一段写入系统文本替换 `ffa`…`ffz`；在 **ABC/英文输入模式** 输入 `ffa` 加空格即可展开第 1 段。中文拼音组合阶段不触发。
 
 设计上的硬边界：
 
 - 不读取浏览器、网页、选区、输入框或屏幕内容；不模拟复制；不主动切换焦点或全屏 Space。
-- 回答只留在内存，不覆盖系统剪贴板；⌘V 仍是系统正常粘贴。
+- 回答正文只留在内存，不覆盖系统剪贴板；⌘V 仍是系统正常粘贴。开启系统词条后，分段文本会写入 macOS 文本替换存储。
 - 发送、取消、暂停、睡眠、锁屏、退出都会清空答案；剪贴板版本变化使旧答案失效。
 - 无标记时不请求 API、不输出旧答案；仅标记或空白也不请求。
 - 运行时只检查权限，从不主动弹授权；授权只在用户主动点击设置界面时触发。
@@ -48,10 +49,11 @@
 | 网络 | Foundation `URLSession`（ephemeral，无磁盘缓存，禁用重定向） | `DeepSeekClient.swift` |
 | 热键 / 输出 | Carbon `RegisterEventHotKey` + CoreGraphics `CGEvent` Unicode 键盘事件 | `HotKey.swift`、`TextOutput.swift` |
 | 凭证存储 | macOS Keychain（Security.framework），项名 `SilentClipboard DeepSeek API Key` | `Storage.swift` |
+| 系统词条 | 系统 SQLite3（`TextReplacements.db`）+ CFPreferences（`NSUserDictionaryReplacementItems`） | `TextReplacement.swift` |
 | 登录项 | ServiceManagement `SMAppService` | `Application.swift` |
 | IPC | 本地 Unix domain socket（`AF_UNIX`），同用户 UID 校验 | `ControlSocket.swift` |
 | 签名 | ad-hoc（`codesign --sign -`），支持用 `SRF_SIGN_IDENTITY` 覆盖 | `scripts/build-app.sh` |
-| 架构 | 当前仅 arm64（打包产物 `SilentClipboard-0.2.0-arm64.zip`） | `scripts/package.sh` |
+| 架构 | 当前仅 arm64（打包产物 `SilentClipboard-0.3.0-arm64.zip`） | `scripts/package.sh` |
 
 ### 2.2 辅助工具（QA / lab，不进入产品二进制）
 
@@ -88,6 +90,7 @@ srf/
 │   │   ├── Configuration.swift    #   配置模型、校验、0.1→0.2 快捷键迁移、错误码
 │   │   ├── DeepSeekClient.swift   #   Chat Completions 请求与响应解码
 │   │   ├── RequestCoordinator.swift # 请求状态机、取消/超时、答案缓冲与分段输出
+│   │   ├── TextReplacement.swift  #   系统文本替换写入、manifest 所有权、全局偏好
 │   │   └── SessionGate.swift      #   睡眠/锁屏/会话状态闸门
 │   └── SilentClipboardApp/        # 应用壳
 │       ├── Main.swift             #   入口分流：后台工具 / 设置 / --ctl 控制命令
@@ -97,7 +100,7 @@ srf/
 │       ├── Storage.swift          #   配置落盘、Keychain、实例锁
 │       ├── ControlSocket.swift    #   Unix socket 客户端/服务端
 │       └── Settings.swift         #   SwiftUI 设置窗口
-├── Tests/ClipboardCoreTests/      # XCTest：Pipeline / Network / SessionGate
+├── Tests/ClipboardCoreTests/      # XCTest：Pipeline / Network / SessionGate / TextReplacement
 ├── bin/srf                        # 命令行入口（转发到安装版 --ctl）
 ├── scripts/
 │   ├── build-app.sh               # swift build + 组装 .app + codesign
@@ -121,7 +124,7 @@ srf/
 swift test                 # 单元测试（Debug）
 ./scripts/build-app.sh     # 构建到 build/SilentClipboard.app 与 build/SilentClipboard Settings.app
 ./scripts/install.sh       # 构建并安装到 /Applications/，启动新版后台工具
-./scripts/package.sh       # 生成 release/SilentClipboard-0.2.0-arm64.zip 与 SHA256SUMS
+./scripts/package.sh       # 生成 release/SilentClipboard-0.3.0-arm64.zip 与 SHA256SUMS
 ```
 
 辅助验证：
@@ -159,6 +162,7 @@ node --test lab/event-replay/replay.test.mjs   # 事件回放模块测试
 | `hotKeyCode` | `8`（⌃C 的虚拟键码） | 旧版 ⌃⌥⌘J 会自动迁移 |
 | `hotKeyModifiers` | `4096`（Control） | 修饰位 |
 | `localClipboardOnly` | `true` | 剪贴板写入限定本机 |
+| `textReplacementEnabled` | `true` | 是否把回答写入系统文本替换；关闭时停止更新并删除本工具创建的 `ffa`–`ffz` |
 
 ### 5.2 命令行（`./bin/srf`）
 
@@ -169,6 +173,9 @@ authorize           # 主动剪贴板授权
 authorize-output    # 主动文字输出授权
 settings            # 打开独立设置应用
 configure FILE      # 加载非密钥配置
+text-replacement-status   # 系统词条开关、权限、管理的 shortcut
+text-replacement-refresh  # 重新检测数据库权限与 manifest
+text-replacement-clear    # 删除本工具创建的 ffa–ffz
 verify | verify-status  # 固定 API 连通性测试，不读写剪贴板
 login-enable | login-disable
 ```
@@ -177,7 +184,7 @@ login-enable | login-disable
 
 ### 5.3 设置应用
 
-打开 `/Applications/SilentClipboard Settings.app` 可配置 API 地址、模型、触发关键字、掩码密钥（存 Keychain）、默认提示词，并执行「测试连接」「保存并生效」「刷新并重启」以及主动授权。
+打开 `/Applications/SilentClipboard Settings.app` 可配置 API 地址、模型、触发关键字、掩码密钥（存 Keychain）、默认提示词、系统词条开关，并执行「测试连接」「保存并生效」「刷新并重启」以及主动授权。系统词条区域显示数据库访问状态、当前管理的 `ffa`–`ffz`、最近更新时间和错误，提供刷新、清除和打开“完全磁盘访问”设置的按钮。
 
 密钥只发给所配置的远端 API；仅对 DeepSeek 官方域名附加关闭 thinking 的扩展参数；不跟随 HTTP 重定向，避免 Authorization 头外泄。
 
@@ -186,8 +193,8 @@ login-enable | login-disable
 ## 6. 隐私与安全设计
 
 - 网络：ephemeral `URLSession`，无缓存、无 Cookie、无凭证存储；响应上限 1 MiB；拒绝重定向与 3xx。
-- 权限：剪贴板读取只在 `accessBehavior == .alwaysAllow` 时进行；文字输出需辅助功能授权；安全键盘输入启用时不发事件。
-- 存储：不保存问答历史、不记录正文日志；配置目录 0700、配置/socket/lock 文件 0600。
+- 权限：剪贴板读取只在 `accessBehavior == .alwaysAllow` 时进行；文字输出需辅助功能授权；系统词条通常可直接写入，若系统策略拒绝才需完全磁盘访问；安全键盘输入启用时不发事件。程序不主动弹 TCC 授权。
+- 存储：不保存聊天历史、不记录正文日志；开启系统词条时，答案分段写入 `~/Library/KeyboardServices/TextReplacements.db` 与全局偏好 `NSUserDictionaryReplacementItems`，按本工具 manifest 记录所有权。配置目录 0700、配置/socket/lock/manifest 文件 0600。
 - 输出：CGEvent 定向发给前台进程，不激活目标、不读目标内容；只能确认事件发出，不能确认目标实际插入成功。
 - 会话：睡眠、屏幕睡眠、会话失活、锁屏、关机均触发暂停并清空答案。
 
@@ -195,6 +202,7 @@ login-enable | login-disable
 
 ## 7. 已知限制
 
+- 系统文本替换只在 **ABC/英文输入模式** 下可靠触发，中文拼音候选组合阶段不替换；地址栏、安全输入框、部分终端和 Electron 应用不保证。本机 0.3.0 安装版可直接读写 `~/Library/KeyboardServices/TextReplacements.db`，TCC 日志未出现 `SystemPolicyAllFiles` 请求；若其他系统版本或策略拒绝，设置页会提示并允许手动授予完全磁盘访问。
 - 当前为 **ad-hoc 签名**：重新构建可能使旧 Keychain 访问或辅助功能授权失效，需在设置应用重新保存密钥并主动更新权限。正式分发应使用稳定 Developer ID 签名并公证。
 - 仅 arm64；macOS 15.4 是部署下限，其他系统版本未实机测试。
 - CGEvent Unicode 的接收由目标应用决定；自定义编辑器、终端、某些输入法组合状态可能不接受，程序无法确认插入成功。

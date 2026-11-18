@@ -123,6 +123,16 @@ private actor ControlledClient: AnswerClient {
         #expect(engine.outputNext { chunk = $0; return true }); #expect(chunk == "an")
         #expect(engine.status.remainingCharacters == 6); #expect(engine.status.completedCount == 1)
     }
+    @Test func answerReadyCallbackFiresOnceAfterAcceptedAnswer() async throws {
+        let board = FakeClipboard(); let client = ControlledClient(); let engine = make(board, client)
+        var answers = [String]()
+        engine.onAnswerReady = { answers.append($0) }
+        engine.trigger(); try await wait { await client.has("question A") }
+        #expect(answers.isEmpty)
+        await client.finish("question A", .success("callback answer"))
+        try await wait { engine.status.state == "ready" }
+        #expect(answers == ["callback answer"])
+    }
     @Test func copyDuringRequestPreservesNewClipboard() async throws {
         let board = FakeClipboard(); let client = ControlledClient(); let engine = make(board, client)
         engine.trigger(); try await wait { await client.has("question A") }

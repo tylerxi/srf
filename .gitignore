@@ -3,4 +3,6 @@ build/
 release/
 .DS_Store
 *.xcuserstate
+.workbuddy/
+mac-import/
 

@@ -1,3 +1,24 @@
+# 验收记录 · 0.3.0
+
+日期：2026-11-18。环境：macOS 15.7.9 / Apple Silicon / Swift 6.2.4。
+
+## 已通过
+
+- Debug 构建与测试：`swift test` 通过 **49 个测试函数、7 个 suite**；覆盖 4 字分段、中文/emoji/空白折叠、空答案与 26 条上限、临时 SQLite 的插入/更新/删除/Z_MAX/Z_ENT/ZNEEDSSAVETOCLOUD、非受管冲突、manifest UUID 冲突、软删除忽略、全局偏好合并，以及“回答成功后才触发一次”的回调。`swift build` 通过，只有既有的 `SecKeychainSetUserInteractionAllowed` 弃用警告。
+- 0.3.0（build 3）已安装到 `/Applications/SilentClipboard.app`；LaunchServices 启动后的后台进程 PID 90800，`windowCount=0`、`activationPolicy=prohibited`。`./bin/srf status` 显示 `textReplacement={enabled:true, access:"allowed", managedShortcuts:[], refresh:"write_only"}`，`configuration.textReplacementEnabled=true`。证据：`build/qa/0.3/status-final.json`。
+- 真实系统词条 canary：写入 `ffq → 测试词条`，DB 行 `Z_PK=12, ZNEEDSSAVETOCLOUD=0, ZWASDELETED=0`；全局偏好 `NSUserDictionaryReplacementItems` 同步出现 `on=1; replace=ffq; with=测试词条`。证据：`build/qa/0.3/canary-db.txt`、`canary-prefs.txt`。
+- 系统文本检查层立即读到新词条，无需重启 `keyboardservicesd`：独立 AppKit 测试进程中 `NSSpellChecker` 报 `auto=1`、`user count=11`、`ffq=测试词条`；`checkString:range:types:` 返回 1 条 `type=256`、`range={0,3}`、`replacement=测试词条`。同一测试进程的 `NSTextCheckingController` 执行 `replaceTextInSelection:` 后，文本从 `ffq ` 变为 `测试词条 `。证据：`build/qa/0.3/text-replacement-probe.txt`。
+- 权限：本机 0.3.0 经 LaunchServices 启动后可直接读写 `~/Library/KeyboardServices/TextReplacements.db`，未出现授权弹窗。TCC 日志中该应用（PID 90800）只请求 `kTCCServiceListenEvent` 和 `kTCCServicePostEvent`（均 `authValue=0, authReason=5`），没有 `kTCCServiceSystemPolicyAllFiles` 请求。证据：`build/qa/0.3/tcc-app-access.txt`。
+- 测试 canary 已清理：DB 恢复为 10 条有效词条，全局偏好恢复为 10 条，`ff%` 前缀为 0；原有 `msd/jld/chaojiandianliang/kouj/dl/dianliang/ia/iaa/aa/tsc` 均保留。清理结果：`build/qa/0.3/cleanup-after.txt`。写入前备份仍在 `build/qa/0.3/TextReplacements-before-0.3.db` 与 `GlobalPreferences-before-0.3.plist`，本次未使用恢复路径。
+- Release 包已生成：`release/SilentClipboard-0.3.0-arm64.zip`，SHA256 `75065849c52816ea42c3798323696bad89b018c746de5944fd86db7bb25d8d79`（`release/SHA256SUMS`）。两个 App 均为 0.3.0 build 3、ad-hoc 签名、arm64。
+
+## 尚未完成，不能视为已验收
+
+- **真实按键触发已补验（2026-11-18 13:19–13:21，PID 25179）**：用户实际输入源为 `com.apple.inputmethod.SCIM.ITABC`（Pinyin - Simplified）；切换为 `com.apple.keylayout.ABC` 后，在 SilentClipboard 进程内用 lldb 调用 `CGEventPost` 向前台测试目标发送真实按键 `f/f/a/space`（keycode 3,3,0,49）。AppKit `NSTextView` 与 WKWebView `textarea` 均从 `ffa ` 自动变为 `1234 `。证据：`build/qa/0.3/real-key-abc.txt`。这补上了此前“合成 AppKit 按键不触发”的缺口，也说明用户测试时仍处于拼音模式是本次未展开的直接原因。
+- **安装版真实 API → 内存回答 → 系统词条全链路已由用户实际请求验证**：PID 25179 的 `credentialAvailable=true`、`completedCount=2`、`requestID=3`、`remainingCharacters=10`；答案 `123456789` 写入 `ffa=1234`、`ffb=5678`、`ffc=89`，全局偏好同步 13 条。因此不再列为未验证项。
+- 浏览器矩阵仅补验了 WKWebView 的 `textarea`；Safari、Chrome、TextEdit、微信输入法以及中文/英文模式下的逐项人工矩阵仍未全部验收；0.3 设置页新增“系统词条”区域的视觉与交互也未人工截图确认。
+- 本次只证明这台 macOS 15.7.9 的行为。其他系统版本、安全策略、输入法和第三方编辑器可能拒绝写入或拒绝替换；应用不会为此弹授权框。
+
 # 验收记录 · 0.2.0
 
 日期：2026-11-17。环境：macOS 15.7.9 / Apple Silicon / Swift 6.2.4。

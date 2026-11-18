@@ -2,6 +2,7 @@
   "hotKeyCode": 8,
   "hotKeyModifiers": 4096,
   "triggerPrefix": "!!!",
+  "textReplacementEnabled": true,
   "localClipboardOnly": true,
   "maxInputBytes": 32768,
   "maxOutputTokens": 4096,

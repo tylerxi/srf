@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS("15.4")],
     products: [.executable(name: "SilentClipboard", targets: ["SilentClipboardApp"])],
     targets: [
-        .target(name: "ClipboardCore"),
+        .target(name: "ClipboardCore", linkerSettings: [.linkedLibrary("sqlite3")]),
         .executableTarget(name: "SilentClipboardApp", dependencies: ["ClipboardCore"]),
         .testTarget(name: "ClipboardCoreTests", dependencies: ["ClipboardCore"]),
     ]

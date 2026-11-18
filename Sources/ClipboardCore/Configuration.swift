@@ -11,11 +11,12 @@ public struct Configuration: Codable, Sendable, Equatable {
     public var hotKeyCode: UInt32 = 38 // J, physical key
     public var hotKeyModifiers: UInt32 = 0x100 | 0x800 | 0x1000 // command + option + control
     public var localClipboardOnly = true
+    public var textReplacementEnabled = true
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case apiEndpoint, model, triggerPrefix, systemPrompt, timeoutSeconds, maxInputBytes, maxOutputTokens
-        case hotKeyCode, hotKeyModifiers, localClipboardOnly
+        case hotKeyCode, hotKeyModifiers, localClipboardOnly, textReplacementEnabled
     }
     public init(from decoder: Decoder) throws {
         self.init()
@@ -30,7 +31,8 @@ public struct Configuration: Codable, Sendable, Equatable {
         hotKeyCode = try c.decodeIfPresent(UInt32.self, forKey: .hotKeyCode) ?? hotKeyCode
         hotKeyModifiers = try c.decodeIfPresent(UInt32.self, forKey: .hotKeyModifiers) ?? hotKeyModifiers
         localClipboardOnly = try c.decodeIfPresent(Bool.self, forKey: .localClipboardOnly) ?? localClipboardOnly
-        // Migrate the shipped 0.1 default (⌃⌥⌘J) to the 0.3 default (⌃C).
+        textReplacementEnabled = try c.decodeIfPresent(Bool.self, forKey: .textReplacementEnabled) ?? textReplacementEnabled
+        // Migrate the shipped 0.1 default (⌃⌥⌘J) to the 0.2+ default (⌃C).
         // A user-chosen shortcut remains unchanged.
         if hotKeyCode == 38 && hotKeyModifiers == 6400 {
             hotKeyCode = 8

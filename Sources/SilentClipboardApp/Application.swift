@@ -9,6 +9,7 @@ import ClipboardCore
     private var outputHotkey: HotKeyService!
     private var server: ControlServer?
     private var instanceLock: InstanceLock?
+    private var textReplacement: TextReplacementService!
     private var observers: [NSObjectProtocol] = []
     private var distributedObservers: [NSObjectProtocol] = []
     private var sessionGate = SessionGate()
@@ -28,6 +29,14 @@ import ClipboardCore
             coordinator = RequestCoordinator(clipboard: clipboard, client: DeepSeekClient(),
                                              configuration: config, credential: CredentialStore.read)
             if configError { coordinator.setPaused(true) }
+            textReplacement = TextReplacementService(
+                databaseURL: AppPaths.textReplacementsDatabase,
+                manifestURL: AppPaths.textReplacementManifest,
+                enabled: config.textReplacementEnabled
+            )
+            coordinator.onAnswerReady = { [weak self] answer in
+                self?.textReplacement.publish(answer: answer)
+            }
             hotkey = HotKeyService { [weak self] in self?.trigger() }
             hotkey.register(config)
             outputHotkey = HotKeyService(id: 2) { [weak self] in
@@ -81,7 +90,8 @@ import ClipboardCore
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { false }
     func applicationWillTerminate(_ notification: Notification) {
-        coordinator?.cancel(); verificationTask?.cancel(); hotkey?.stop(); outputHotkey?.stop(); server = nil
+        coordinator?.cancel(); textReplacement?.flush()
+        verificationTask?.cancel(); hotkey?.stop(); outputHotkey?.stop(); server = nil
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         for observer in distributedObservers { DistributedNotificationCenter.default().removeObserver(observer) }
     }
@@ -102,6 +112,7 @@ import ClipboardCore
             result.activationPolicy = NSApp.activationPolicy() == .prohibited ? "prohibited" : "unexpected"
             result.loginStatus = String(describing: SMAppService.mainApp.status)
             result.pid = getpid()
+            result.textReplacement = textReplacement.snapshot()
             return result
         case "process":
             trigger(); return ControlResponse(ok: !sessionGate.suspended && !configError, message: "triggered", pipeline: coordinator.status)
@@ -123,6 +134,14 @@ import ClipboardCore
             return ControlResponse(ok: clipboard.accessAllowed, message: "authorization_checked", clipboardAccess: clipboard.accessName)
         case "authorize-output":
             return ControlResponse(ok: CGRequestPostEventAccess(), message: "output_authorization_checked")
+        case "text-replacement-status":
+            return ControlResponse(ok: true, message: "text_replacement_status", textReplacement: textReplacement.snapshot())
+        case "text-replacement-clear":
+            textReplacement.clear()
+            return ControlResponse(ok: true, message: "text_replacement_clear_queued", textReplacement: textReplacement.snapshot())
+        case "text-replacement-refresh":
+            textReplacement.refresh()
+            return ControlResponse(ok: true, message: "text_replacement_refresh_queued", textReplacement: textReplacement.snapshot())
         case "configure":
             guard let config = request.configuration else { return ControlResponse(ok: false, message: "invalid_configuration") }
             do {
@@ -141,6 +160,7 @@ import ClipboardCore
                     hotkey.register(coordinator.configuration); throw error
                 }
                 coordinator.configuration = config; configError = false
+                textReplacement.setEnabled(config.textReplacementEnabled)
                 return ControlResponse(ok: true, message: "configured")
             } catch { return ControlResponse(ok: false, message: "invalid_configuration_or_write_failed") }
         case "login-enable", "login-disable":

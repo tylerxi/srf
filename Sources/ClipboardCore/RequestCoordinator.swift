@@ -16,6 +16,9 @@ public struct PipelineStatus: Codable, Sendable {
 @MainActor public final class RequestCoordinator {
     public private(set) var status = PipelineStatus()
     public var configuration: Configuration
+    /// Called on the main actor after a complete answer is accepted and stored in memory.
+    /// Implementations must return immediately; long work belongs on their own queue.
+    public var onAnswerReady: ((String) -> Void)?
     private let clipboard: any ClipboardAccess
     private let client: any AnswerClient
     private let credential: @MainActor () throws -> String
@@ -63,6 +66,7 @@ public struct PipelineStatus: Codable, Sendable {
                     self.answerClipboardVersion = snapshot.version
                     self.status.remainingCharacters = self.answerBuffer!.count
                     self.status.state = "ready"; self.status.completedCount += 1
+                    self.onAnswerReady?(answer)
                     self.finish(started: started)
                 } catch {
                     guard let self, self.generation == id, !Task.isCancelled else { return }
